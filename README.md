@@ -120,7 +120,7 @@ async function lerPDF(file) {
           texto += item.str + " ";
         });
 
-        texto += "\n";
+        texto += "\n"; // mantém quebra de linha
       }
 
       resolve(texto.toLowerCase());
@@ -130,48 +130,41 @@ async function lerPDF(file) {
   });
 }
 
-// 🔢 converter número BR
+// 🔢 converte número BR
 function extrairNumero(valor) {
   valor = valor.replace(/\./g, "").replace(",", ".");
   return parseFloat(valor.replace(/[^\d.-]/g, "")) || 0;
 }
 
-// 🔍 CLASSIFICAÇÃO POSITIVO/NEGATIVO
+// 🔍 CLASSIFICAÇÃO
 function analisarTexto(texto, nomeArquivo, fileAtual) {
 
-  texto = texto.replace(/\s+/g, " ");
+  const linhas = texto.split("\n");
 
-  const index = texto.indexOf("resultado do período");
+  for (let linha of linhas) {
 
-  if (index !== -1) {
+    if (linha.includes("resultado do período")) {
 
-    const depois = texto.substring(index, index + 300);
+      const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
 
-    const valores = depois.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
+      if (numeros && numeros.length >= 4) {
 
-    if (valores && valores.length >= 4) {
+        const saldoBruto = numeros[3];
+        const saldo = saldoBruto.replace(/\s+/g, "");
 
-      const saldoBruto = valores[3];
-      const saldo = saldoBruto.replace(/\s+/g, "");
+        const ehNegativo =
+          saldo.startsWith("(") ||
+          saldo.endsWith(")");
 
-      const posSaldo = depois.indexOf(saldoBruto);
-      const contexto = depois.substring(
-        Math.max(0, posSaldo - 15),
-        posSaldo + saldoBruto.length + 15
-      );
+        if (ehNegativo) {
+          adicionarLista("negativos", nomeArquivo, saldo);
+          arquivosNegativos.push(fileAtual);
+        } else {
+          adicionarLista("positivos", nomeArquivo, saldo);
+        }
 
-      const ehNegativo =
-        saldo.startsWith("(") ||
-        saldo.endsWith(")") ||
-        contexto.includes("(");
-
-      if (ehNegativo) {
-        adicionarLista("negativos", nomeArquivo, saldo);
-        arquivosNegativos.push(fileAtual);
-      } else {
-        adicionarLista("positivos", nomeArquivo, saldo);
+        break;
       }
-
     }
   }
 }
@@ -183,41 +176,45 @@ function adicionarLista(tipo, nome, saldo) {
   ul.appendChild(li);
 }
 
-// 📊 CÁLCULO AVANÇADO
+// 📊 ANÁLISE AVANÇADA (BLINDADA)
 function calcularAnaliseAvancada(texto, nomeArquivo) {
 
-  texto = texto.replace(/\s+/g, " ");
+  const linhas = texto.split("\n");
 
-  // PRESTAÇÃO DE SERVIÇOS
-  const servicoMatch = texto.match(/prestação de serviços(.{0,120})/i);
   let valorServico = 0;
-
-  if (servicoMatch) {
-    const numeros = servicoMatch[1].match(/\d{1,3}(\.\d{3})*,\d{2}/g);
-    if (numeros) {
-      valorServico = extrairNumero(numeros[numeros.length - 1]);
-    }
-  }
-
-  // SIMPLES NACIONAL
-  const simplesMatch = texto.match(/simples nacional(.{0,120})/i);
   let valorSimples = 0;
-
-  if (simplesMatch) {
-    const numeros = simplesMatch[1].match(/\(?\d{1,3}(\.\d{3})*,\d{2}\)?/g);
-    if (numeros) {
-      valorSimples = extrairNumero(numeros[numeros.length - 1]);
-    }
-  }
-
-  // RESULTADO DO PERÍODO
-  const resultadoMatch = texto.match(/resultado do período(.{0,120})/i);
   let resultadoPeriodo = 0;
 
-  if (resultadoMatch) {
-    const numeros = resultadoMatch[1].match(/\(?\d{1,3}(\.\d{3})*,\d{2}\)?/g);
-    if (numeros && numeros.length >= 4) {
-      resultadoPeriodo = extrairNumero(numeros[3]);
+  for (let linha of linhas) {
+
+    // PRESTAÇÃO DE SERVIÇOS
+    if (linha.includes("prestação de serviços")) {
+
+      const numeros = linha.match(/\d{1,3}(\.\d{3})*,\d{2}/g);
+
+      if (numeros && numeros.length > 0) {
+        valorServico = extrairNumero(numeros[numeros.length - 1]);
+      }
+    }
+
+    // SIMPLES NACIONAL
+    if (linha.includes("simples nacional")) {
+
+      const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
+
+      if (numeros && numeros.length > 0) {
+        valorSimples = extrairNumero(numeros[numeros.length - 1]);
+      }
+    }
+
+    // RESULTADO DO PERÍODO
+    if (linha.includes("resultado do período")) {
+
+      const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
+
+      if (numeros && numeros.length >= 4) {
+        resultadoPeriodo = extrairNumero(numeros[3]);
+      }
     }
   }
 
