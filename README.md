@@ -46,14 +46,6 @@
     .negativo { background: #600; }
 
     li { margin: 8px 0; text-align: left; }
-
-    .analise {
-      margin-top: 30px;
-      background: #222;
-      padding: 15px;
-      border-radius: 10px;
-      text-align: left;
-    }
   </style>
 </head>
 
@@ -64,6 +56,7 @@
 <input type="file" id="pdfInput" multiple accept="application/pdf">
 <br>
 <button onclick="baixarNegativosZIP()">⬇️ Baixar Negativos (ZIP)</button>
+<button onclick="baixarPositivosZIP()">⬇️ Baixar Positivos (ZIP)</button>
 
 <div class="box">
   <div class="coluna positivo">
@@ -77,28 +70,23 @@
   </div>
 </div>
 
-<div class="analise">
-  <h2>📊 Análise Avançada</h2>
-  <div id="resultadoAnalise"></div>
-</div>
-
 <script>
 const input = document.getElementById("pdfInput");
 let arquivosNegativos = [];
+let arquivosPositivos = [];
 
 input.addEventListener("change", async (event) => {
 
   document.getElementById("positivos").innerHTML = "";
   document.getElementById("negativos").innerHTML = "";
-  document.getElementById("resultadoAnalise").innerHTML = "";
   arquivosNegativos = [];
+  arquivosPositivos = [];
 
   const arquivos = event.target.files;
 
   for (let file of arquivos) {
     const texto = await lerPDF(file);
     analisarTexto(texto, file.name, file);
-    calcularAnaliseAvancada(texto, file.name);
   }
 });
 
@@ -130,52 +118,42 @@ async function lerPDF(file) {
   });
 }
 
-// 🔥 converte número BR e detecta negativo corretamente
-function extrairNumero(valor) {
-
-  let negativo = false;
-
-  if (valor.includes("(") && valor.includes(")")) {
-    negativo = true;
-  }
-
-  valor = valor.replace(/\./g, "").replace(",", ".");
-  valor = valor.replace(/[^\d.-]/g, "");
-
-  let numero = parseFloat(valor) || 0;
-
-  return negativo ? -numero : numero;
-}
-
-// 🔍 CLASSIFICAÇÃO CORRETA
 function analisarTexto(texto, nomeArquivo, fileAtual) {
 
-  const linhas = texto.split("\n");
+  texto = texto.replace(/\s+/g, " ");
 
-  for (let linha of linhas) {
+  const index = texto.indexOf("resultado do período");
 
-    if (linha.includes("resultado do período")) {
+  if (index !== -1) {
 
-      const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
+    const depois = texto.substring(index, index + 300);
 
-      if (numeros && numeros.length >= 4) {
+    const valores = depois.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
 
-        const saldoBruto = numeros[3];
+    if (valores && valores.length >= 4) {
 
-        // 🔥 agora usa número real
-        const valorNumerico = extrairNumero(saldoBruto);
+      const saldoBruto = valores[3];
+      const saldo = saldoBruto.replace(/\s+/g, "");
 
-        const ehNegativo = valorNumerico < 0;
+      const posSaldo = depois.indexOf(saldoBruto);
+      const contexto = depois.substring(
+        Math.max(0, posSaldo - 15),
+        posSaldo + saldoBruto.length + 15
+      );
 
-        if (ehNegativo) {
-          adicionarLista("negativos", nomeArquivo, saldoBruto);
-          arquivosNegativos.push(fileAtual);
-        } else {
-          adicionarLista("positivos", nomeArquivo, saldoBruto);
-        }
+      const ehNegativo =
+        saldo.startsWith("(") ||
+        saldo.endsWith(")") ||
+        contexto.includes("(");
 
-        break;
+      if (ehNegativo) {
+        adicionarLista("negativos", nomeArquivo, saldo);
+        arquivosNegativos.push(fileAtual);
+      } else {
+        adicionarLista("positivos", nomeArquivo, saldo);
+        arquivosPositivos.push(fileAtual);
       }
+
     }
   }
 }
@@ -187,63 +165,7 @@ function adicionarLista(tipo, nome, saldo) {
   ul.appendChild(li);
 }
 
-// 📊 ANÁLISE FINAL CORRETA
-function calcularAnaliseAvancada(texto, nomeArquivo) {
-
-  const linhas = texto.split("\n");
-
-  let valorServico = 0;
-  let valorSimples = 0;
-  let resultadoPeriodo = 0;
-
-  for (let linha of linhas) {
-
-    if (linha.includes("prestação de serviços")) {
-      const numeros = linha.match(/\d{1,3}(\.\d{3})*,\d{2}/g);
-      if (numeros) {
-        valorServico = extrairNumero(numeros[numeros.length - 1]);
-      }
-    }
-
-    if (linha.includes("simples nacional")) {
-      const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
-      if (numeros) {
-        valorSimples = extrairNumero(numeros[numeros.length - 1]);
-      }
-    }
-
-    if (linha.includes("resultado do período")) {
-      const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
-      if (numeros && numeros.length >= 4) {
-        resultadoPeriodo = extrairNumero(numeros[3]);
-      }
-    }
-  }
-
-  const calc1 = valorServico * 0.32;
-  const calc2 = valorSimples * 0.05;
-
-  // 🔥 correto (simples já é negativo)
-  const resultadoFinal = calc1 + calc2;
-
-  const status = resultadoFinal > resultadoPeriodo ? "✅ MAIOR" : "❌ MENOR";
-
-  const div = document.getElementById("resultadoAnalise");
-
-  div.innerHTML += `
-    <p>
-      <strong>${nomeArquivo}</strong><br>
-      Serviço: R$ ${valorServico.toLocaleString('pt-BR')}<br>
-      Simples: R$ ${valorSimples.toLocaleString('pt-BR')}<br>
-      Resultado Calc: R$ ${resultadoFinal.toLocaleString('pt-BR')}<br>
-      Resultado Período: R$ ${resultadoPeriodo.toLocaleString('pt-BR')}<br>
-      <strong>${status}</strong>
-    </p>
-    <hr>
-  `;
-}
-
-// 📦 ZIP
+// 🔥 DOWNLOAD NEGATIVOS
 async function baixarNegativosZIP() {
 
   if (arquivosNegativos.length === 0) {
@@ -262,6 +184,28 @@ async function baixarNegativosZIP() {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(conteudo);
   link.download = "pdfs_negativos.zip";
+  link.click();
+}
+
+// 🔥 DOWNLOAD POSITIVOS
+async function baixarPositivosZIP() {
+
+  if (arquivosPositivos.length === 0) {
+    alert("Nenhum PDF positivo encontrado.");
+    return;
+  }
+
+  const zip = new JSZip();
+
+  arquivosPositivos.forEach(file => {
+    zip.file(file.name, file);
+  });
+
+  const conteudo = await zip.generateAsync({ type: "blob" });
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(conteudo);
+  link.download = "pdfs_positivos.zip";
   link.click();
 }
 </script>
