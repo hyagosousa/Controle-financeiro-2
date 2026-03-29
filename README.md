@@ -120,7 +120,7 @@ async function lerPDF(file) {
           texto += item.str + " ";
         });
 
-        texto += "\n"; // mantém quebra de linha
+        texto += "\n";
       }
 
       resolve(texto.toLowerCase());
@@ -130,13 +130,24 @@ async function lerPDF(file) {
   });
 }
 
-// 🔢 converte número BR
+// 🔥 converte número BR e detecta negativo corretamente
 function extrairNumero(valor) {
+
+  let negativo = false;
+
+  if (valor.includes("(") && valor.includes(")")) {
+    negativo = true;
+  }
+
   valor = valor.replace(/\./g, "").replace(",", ".");
-  return parseFloat(valor.replace(/[^\d.-]/g, "")) || 0;
+  valor = valor.replace(/[^\d.-]/g, "");
+
+  let numero = parseFloat(valor) || 0;
+
+  return negativo ? -numero : numero;
 }
 
-// 🔍 CLASSIFICAÇÃO
+// 🔍 CLASSIFICAÇÃO CORRETA
 function analisarTexto(texto, nomeArquivo, fileAtual) {
 
   const linhas = texto.split("\n");
@@ -150,17 +161,17 @@ function analisarTexto(texto, nomeArquivo, fileAtual) {
       if (numeros && numeros.length >= 4) {
 
         const saldoBruto = numeros[3];
-        const saldo = saldoBruto.replace(/\s+/g, "");
 
-        const ehNegativo =
-          saldo.startsWith("(") ||
-          saldo.endsWith(")");
+        // 🔥 agora usa número real
+        const valorNumerico = extrairNumero(saldoBruto);
+
+        const ehNegativo = valorNumerico < 0;
 
         if (ehNegativo) {
-          adicionarLista("negativos", nomeArquivo, saldo);
+          adicionarLista("negativos", nomeArquivo, saldoBruto);
           arquivosNegativos.push(fileAtual);
         } else {
-          adicionarLista("positivos", nomeArquivo, saldo);
+          adicionarLista("positivos", nomeArquivo, saldoBruto);
         }
 
         break;
@@ -176,7 +187,7 @@ function adicionarLista(tipo, nome, saldo) {
   ul.appendChild(li);
 }
 
-// 📊 ANÁLISE AVANÇADA (BLINDADA)
+// 📊 ANÁLISE FINAL CORRETA
 function calcularAnaliseAvancada(texto, nomeArquivo) {
 
   const linhas = texto.split("\n");
@@ -187,31 +198,22 @@ function calcularAnaliseAvancada(texto, nomeArquivo) {
 
   for (let linha of linhas) {
 
-    // PRESTAÇÃO DE SERVIÇOS
     if (linha.includes("prestação de serviços")) {
-
       const numeros = linha.match(/\d{1,3}(\.\d{3})*,\d{2}/g);
-
-      if (numeros && numeros.length > 0) {
+      if (numeros) {
         valorServico = extrairNumero(numeros[numeros.length - 1]);
       }
     }
 
-    // SIMPLES NACIONAL
     if (linha.includes("simples nacional")) {
-
       const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
-
-      if (numeros && numeros.length > 0) {
+      if (numeros) {
         valorSimples = extrairNumero(numeros[numeros.length - 1]);
       }
     }
 
-    // RESULTADO DO PERÍODO
     if (linha.includes("resultado do período")) {
-
       const numeros = linha.match(/\(?\s*\d{1,3}(?:\.\d{3})*,\d{2}\s*\)?/g);
-
       if (numeros && numeros.length >= 4) {
         resultadoPeriodo = extrairNumero(numeros[3]);
       }
@@ -220,7 +222,9 @@ function calcularAnaliseAvancada(texto, nomeArquivo) {
 
   const calc1 = valorServico * 0.32;
   const calc2 = valorSimples * 0.05;
-  const resultadoFinal = calc1 - calc2;
+
+  // 🔥 correto (simples já é negativo)
+  const resultadoFinal = calc1 + calc2;
 
   const status = resultadoFinal > resultadoPeriodo ? "✅ MAIOR" : "❌ MENOR";
 
